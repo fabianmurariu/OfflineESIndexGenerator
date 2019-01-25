@@ -4,14 +4,13 @@ import java.io.File
 import java.util.UUID
 
 import scala.util.parsing.json._
-import com.cloudera.org.joda.time.IllegalInstantException
-import my.elasticsearch.joda.time.format.{DateTimeFormat, DateTimeFormatter}
-import my.elasticsearch.joda.time.{DateTime, DateTimeZone, IllegalFieldValueException}
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
+import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
+import org.joda.time.{DateTime, DateTimeZone, IllegalFieldValueException, IllegalInstantException}
 import org.slf4j.{Logger, LoggerFactory}
 import sk.eset.dbsystems.spark._
 
@@ -184,7 +183,7 @@ object OfflineIndexer {
 
     //If partitioning field is defined, prepare RDD as key,value and partition acording to it
     if (config.partitionByField.isDefined) {
-      val toIndexRdd = df.map(
+      val toIndexRdd = df.rdd.map(
         row => (row.getAs[String](config.partitionByField.get), broadcastedExtractedFieldMapping.value.map(
           mapping => (mapping._1, mapping._2._2(row.getAs[String](mapping._2._1)))
         ))
@@ -203,7 +202,7 @@ object OfflineIndexer {
         config.idField
       )
     } else {
-      val toIndexRdd = df.map(
+      val toIndexRdd = df.rdd.map(
         row => broadcastedExtractedFieldMapping.value.map(
           mapping => (mapping._1, mapping._2._2(row.getAs[String](mapping._2._1)))
         )

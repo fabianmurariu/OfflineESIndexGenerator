@@ -1,6 +1,9 @@
 package sk.eset.dbsystems
 
+import com.sksamuel.elastic4s.embedded.LocalNode
+import monix.eval.Task
 import org.apache.spark.rdd.RDD
+import org.elasticsearch.common.settings.Settings
 
 /**
   * Created by andrej.babolcai on 22. 1. 2016.
@@ -8,6 +11,8 @@ import org.apache.spark.rdd.RDD
   */
 
 package object spark {
+
+  val t = Task{ LocalNode(Settings.builder().build())}
 
   implicit class DBSysSparkRDDFunctions[T <: Map[String,Object]](val rdd: RDD[T]) extends AnyVal {
     def saveToESSnapshot(workdir:String,
