@@ -24,14 +24,17 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % "2.3.2" % "provided",
   "org.apache.spark" %% "spark-sql" % "2.3.2" % "provided",
   "com.github.scopt" %% "scopt" % "3.5.0",
-  "org.apache.logging.log4j" % "log4j-api" % "2.8.2",
-  "org.apache.logging.log4j" % "log4j-core" % "2.8.2",
+  "org.apache.logging.log4j" % "log4j-api" % "2.11.1",
+  "org.apache.logging.log4j" % "log4j-core" % "2.11.1",
+  "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.11.1",
   "com.github.scopt" %% "scopt" % "3.5.0",
   "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-tcp" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-embedded" % elastic4sVersion,
   "io.monix" %% "monix" % "3.0.0-RC2",
-  "io.monix" %% "monix-execution" % "3.0.0-RC2"
+  "io.monix" %% "monix-execution" % "3.0.0-RC2",
+  "org.scalactic" %% "scalactic" % "3.0.5",
+  "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 )
 
 // There is a conflict between Guava/Jackson versions on Elasticsearch and Hadoop
