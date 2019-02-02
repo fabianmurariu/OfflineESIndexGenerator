@@ -5,9 +5,7 @@ lazy val root = (project in file(".")).
     name := "OfflineESIndex",
     version := "3.0.0",
     scalaVersion := "2.11.11",
-    mainClass in Compile := Some("sk.eset.dbsystems.OfflineESIndexGenerator"),
-    exportJars := true,
-    retrieveManaged := true
+    mainClass in Compile := Some("sk.eset.dbsystems.OfflineESIndexGenerator")
   )
 
 val circeVersion = "0.10.0"
@@ -34,9 +32,14 @@ libraryDependencies ++= Seq(
   "io.monix" %% "monix" % "3.0.0-RC2",
   "io.monix" %% "monix-execution" % "3.0.0-RC2",
   "org.scalactic" %% "scalactic" % "3.0.5",
-  "org.scalatest" %% "scalatest" % "3.0.5" % "test"
+  "com.google.guava" % "guava" % "14.0.1",
+  "org.scalatest" %% "scalatest" % "3.0.5" % "test",
+  "org.netpreserve.commons" % "webarchive-commons" % "1.1.8" exclude("org.apache.hadoop", "hadoop-core")
 )
 
+dependencyOverrides ++= Seq(
+  "com.google.guava" % "guava" % "14.0.1"
+)
 // There is a conflict between Guava/Jackson versions on Elasticsearch and Hadoop
 // Shading Guava Package
 assemblyShadeRules in assembly := Seq(
