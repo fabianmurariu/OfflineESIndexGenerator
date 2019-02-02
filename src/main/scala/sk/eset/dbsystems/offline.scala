@@ -9,7 +9,7 @@ import sk.eset.dbsystems.spark.OfflineResult
 
 object offline {
 
-  implicit class OfflineIndexDatasetOps[T](val ds: Dataset[T]) extends AnyVal {
+  implicit class OfflineIndexDatasetOps[T: ESRouting](val ds: Dataset[T]) {
     def indexPartition[U](f: (TcpClient, T) => U)(implicit E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
 
       ds.mapPartitions {
@@ -31,6 +31,10 @@ object offline {
     }
   }
 
-  def loadWETFiles(path:String) = ???
+  def loadWETFiles(path: String) = ???
+
+  trait ESRouting[T] {
+    def route(t: T): String
+  }
 
 }
