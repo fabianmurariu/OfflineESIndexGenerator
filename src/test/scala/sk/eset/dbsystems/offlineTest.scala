@@ -1,41 +1,75 @@
 package sk.eset.dbsystems
 
-import java.io.ByteArrayOutputStream
-import java.nio.file.Paths
-
-import org.apache.spark.sql.SparkSession
-import org.scalatest.{FlatSpec, Matchers}
+import com.github.fabianmurariu.esoffline.{WebDocument, offline}
 import com.sksamuel.elastic4s.TcpClient
-import com.sksamuel.elastic4s.ElasticDsl._
-import org.apache.hadoop.io.Text
-import org.archive.io.{ArchiveReader, ArchiveRecord}
-import warc.WARCFileInputFormat
+import com.sksamuel.elastic4s.http.HttpClient
+import org.apache.http.HttpEntity
+import org.apache.http.entity.StringEntity
+import org.apache.http.message.BasicHeader
+import org.apache.spark.sql.{Dataset, Encoder, Encoders, SparkSession}
+import org.scalatest.{FlatSpec, Matchers}
 
 class offlineTest extends FlatSpec with Matchers {
 
-  "offline-indexing" should "trigger the offline indexing of a dataset" in {
-    val spark = SparkSession.builder().appName("test").master("local").getOrCreate()
-    import spark.implicits._
-    import offline._
-    import scala.collection.JavaConversions.{iterableAsScalaIterable, mapAsScalaMap}
+  implicit val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
 
-    spark.sparkContext.newAPIHadoopFile[Text, ArchiveReader, WARCFileInputFormat]("data/*.warc.wet.gz")
-      .flatMap {
-        case (file, archive: ArchiveReader) =>
-          archive.map {
-            record: ArchiveRecord =>
-              val header = record.getHeader
-              val os = new ByteArrayOutputStream()
-              record.dump(os)
-              os.close()
-              val text = new String(os.toByteArray, "UTF-8")
-              WebDocument(file.toString, header.getDate, header.getContentLength, header.getMimetype, header.getUrl, header.getVersion, header.getRecordIdentifier, text)
-          }
-      }.toDS()
-      .show(false)
+  "offline-indexing" should "trigger the offline indexing of a dataset" in {
+    offline.loadWETFiles("data/*.warc.wet.gz").show(5)
+
+  }
+
+  it should "load the CC index and surface metadata" in {
+    offline.loadIndexFiles("data/cdx-00000.gz").show(500, truncate = false)
+  }
+
+  it should "be able to join some of this stuff" in {
+    import offline._
+    import spark.implicits._
+    import io.circe.generic.auto._
+    import com.sksamuel.elastic4s.circe._
+    import com.sksamuel.elastic4s.TcpClient
+    import com.sksamuel.elastic4s.ElasticDsl._
+
+    val a1: Dataset[WebDocument] = loadWETFiles("data/*.warc.wet.gz")
+    def createPipeline(httpClient: HttpClient):HttpClient = {
+      val restClient = httpClient.rest
+      val body =
+        """
+          | {
+          |  "description": "A pipeline to index data into language specific analyzers",
+          |  "processors": [
+          |    {
+          |      "langdetect": {
+          |        "field": "my_field",
+          |        "target_field": "lang"
+          |      }
+          |    },
+          |    {
+          |      "script": {
+          |        "source": "ctx.language = [:];ctx.language[ctx.lang] = ctx.remove('my_field')"
+          |      }
+          |    }
+          |  ]
+          | }
+        """.stripMargin
+      val params = new java.util.HashMap[String, String]()
+      val stringEntity = new StringEntity(body)
+
+      restClient.performRequest(
+        "PUT",
+        "_ingest/pipeline/langdetect-analyzer-pipeline",
+        params,
+        stringEntity, new BasicHeader("Accept", "application/json"), new BasicHeader("Content-Type", "application/json"))
+
+      httpClient
+    }
+
+    a1.indexPartitionHttp[Int](5, createPipeline) {
+      (client: HttpClient, wd: Seq[WebDocument]) =>
+        1
+    }
 
   }
 
 }
 
-case class WebDocument(origin: String, date: String, length: Long, mime: String, url: String, version: String, recordId: String, text: String)

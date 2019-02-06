@@ -29,11 +29,14 @@ libraryDependencies ++= Seq(
   "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-tcp" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-embedded" % elastic4sVersion,
+  "com.sksamuel.elastic4s" %% "elastic4s-circe" % elastic4sVersion,
+  "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion,
   "io.monix" %% "monix" % "3.0.0-RC2",
   "io.monix" %% "monix-execution" % "3.0.0-RC2",
   "org.scalactic" %% "scalactic" % "3.0.5",
   "com.google.guava" % "guava" % "14.0.1",
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
   "org.netpreserve.commons" % "webarchive-commons" % "1.1.8" exclude("org.apache.hadoop", "hadoop-core")
 )
 

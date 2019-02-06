@@ -12,7 +12,6 @@ import org.elasticsearch.common.settings.Settings
 
 package object spark {
 
-  case class OfflineResult[T](result: Option[T], failed: Option[String] = None)
 
   val t = Task{ LocalNode(Settings.builder().build())}
 
