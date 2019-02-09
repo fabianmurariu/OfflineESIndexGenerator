@@ -1,0 +1,69 @@
+# Can we add a pipeline to index languages as we see fit
+
+:host = http://localhost:9200
+:headers = <<
+Content-Type: application/json
+Accept: application/json
+#
+# quick test
+GET :host
+:headers
+# create da pipeline
+
+PUT :host/_ingest/pipeline/langdetect-analyzer-pipeline
+:headers
+{
+  "description": "A pipeline to index data into language specific analyzers",
+  "processors": [
+    {
+      "langdetect": {
+        "field": "my_field",
+        "target_field": "lang"
+      }
+    },
+    {
+      "script": {
+        "source": "ctx.language = [:];ctx.language[ctx.lang] = ctx.remove('my_field')"
+      }
+    }
+  ]
+}
+# create index
+PUT :host/documents
+:headers
+{
+  "mappings": {
+    "doc" : {
+      "properties" : {
+        "language": {
+          "properties": {
+            "de" : {
+              "type": "text",
+              "analyzer": "german"
+            },
+            "en" : {
+              "type": "text",
+              "analyzer": "english"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+# create 2 items
+PUT :host/documents/doc/1?pipeline=langdetect-analyzer-pipeline
+:headers
+{
+  "my_field" : "This is an english text"
+}
+#
+PUT :host/documents/doc/2?pipeline=langdetect-analyzer-pipeline
+:headers
+{
+  "my_field" : "Das hier ist ein deutscher Text."
+}
+# Now get em back
+GET :host/documents/doc/1
+#
+GET :host/documents/doc/2

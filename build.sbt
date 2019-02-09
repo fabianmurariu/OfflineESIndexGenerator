@@ -16,7 +16,7 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-parser"
 ).map(_ % circeVersion)
 
-val elastic4sVersion = "5.6.9"
+val elastic4sVersion = "6.5.1"
 
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % "2.3.2" % "provided",
@@ -27,7 +27,6 @@ libraryDependencies ++= Seq(
   "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.11.1",
   "com.github.scopt" %% "scopt" % "3.5.0",
   "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion,
-  "com.sksamuel.elastic4s" %% "elastic4s-tcp" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-embedded" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-circe" % elastic4sVersion,
   "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion,
