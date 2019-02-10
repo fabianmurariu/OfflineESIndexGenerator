@@ -38,8 +38,7 @@ object offline {
                 }
             }
 
-          EsLang.endStream[OfflineResult[U]](
-            iterator.toStream, client).iterator
+          EsLang.endStream[OfflineResult[U]]( iterator.toStream, client).iterator
       }
     }
   }

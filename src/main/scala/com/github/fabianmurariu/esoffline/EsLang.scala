@@ -1,20 +1,18 @@
 package com.github.fabianmurariu.esoffline
 
-import com.sksamuel.elastic4s.http.index.CreateIndexResponse
+import com.sksamuel.elastic4s.Index
 import com.sksamuel.elastic4s.http._
+import com.sksamuel.elastic4s.http.snapshots.CreateSnapshotResponse
 import monix.eval.Task
-import monix.execution.Callback
+import monix.execution.schedulers.{ExecutorScheduler, SchedulerService}
+import monix.execution.{Callback, Scheduler}
+import org.apache.spark.TaskContext
 
-import scala.annotation.tailrec
 import scala.concurrent.Future
 
 object EsLang {
 
   def createPipeline(elasticClient: ElasticClient): Task[ElasticClient] = {
-    import com.sksamuel.elastic4s.mappings.FieldType._
-
-    import io.circe.generic.auto._
-    import com.sksamuel.elastic4s.circe._
     import com.sksamuel.elastic4s.http.ElasticDsl._
 
     val restClient = elasticClient.client
@@ -39,13 +37,25 @@ object EsLang {
       """.stripMargin
     val stringEntity = HttpEntity(body)
 
-    val createIndexTask =  Task.deferFuture {
+    val createTemplateTask = Task.deferFuture {
+      elasticClient.execute(
+        createIndexTemplate("default", "*").create(true).settings(
+          Map("number_of_shards" -> 3, "number_of_replicas" -> 0)
+        ).order(0)
+      )
+    }
+
+    val createIndexTask = Task.deferFuture {
       elasticClient.execute {
         createIndex("docs").mappings(
           mapping("doc").fields(
             textField("text")
           )
-        ).shards(3)
+        )
+        createRepository("offline-backup", "fs").settings(Map(
+          "location" -> ".",
+          "compress" -> "false",
+          "max_snapshot_bytes_per_sec" -> "400mb"))
       }
     }
 
@@ -54,22 +64,25 @@ object EsLang {
         restClient.send(ElasticRequest("PUT", "_ingest/pipeline/langdetect-analyzer-pipeline", stringEntity), cb)
     }
 
-    createLangPipeline.flatMap(_ => createIndexTask).map(_ => elasticClient)
+    createLangPipeline.flatMap(_ => createTemplateTask).flatMap(_ => createIndexTask).map(_ => elasticClient)
   }
 
-  def endStream[T](s:Stream[T], elasticClient: Task[ElasticClient]):Stream[T] = {
+  def endStream[T](s: Stream[T], elasticClient: Task[ElasticClient]): Stream[T] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
+    implicit val ss: SchedulerService = Scheduler.io()
+
     s match {
-      case Stream.empty =>
-        elasticClient.map{
-          ec => ec.execute{
-            createRepository("offline-backup", "fs").settings(Map(
-              "location" -> ".",
-              "compress" -> "false",
-              "max_snapshot_bytes_per_sec" -> "400mb"))
+      case Stream.Empty =>
+        elasticClient.flatMap { ec =>
+          Task.deferFuture {
+            ec.execute {
+              flushIndex("docs")
+              forceMerge("docs")
+              createSnapshot(s"offline-snapshot", "offline-backup").index(Index("docs")).waitForCompletion(true)
+            }
           }
-        }
-        Stream.empty
+        }.map(println).runSyncUnsafe()
+        Stream.empty[T]
       case head #:: next => head #:: endStream(next, elasticClient)
     }
   }

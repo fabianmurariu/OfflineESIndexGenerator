@@ -67,3 +67,34 @@ PUT :host/documents/doc/2?pipeline=langdetect-analyzer-pipeline
 GET :host/documents/doc/1
 #
 GET :host/documents/doc/2
+
+# create snapshot repository
+PUT :host/_snapshot/my_backup
+:headers
+{
+  "type": "fs",
+  "settings": {
+    "location": ".",
+    "compress": false
+  }
+}
+
+# get all the snapshots
+GET :host/_snapshot/my_backup/_all
+:headers
+
+# restore the offline snapshot
+POST :host/_snapshot/my_backup/offline-snapshot/_restore
+:headers
+
+# list all indices
+GET :host/_cat/indices
+:headers
+
+# search
+GET :host/docs/_search
+:headers
+
+#delete docs
+DELETE :host/docs
+:headers

@@ -1,37 +1,30 @@
-package sk.eset.dbsystems
+package com.github.fabianmurariu.esoffline
 
-import com.github.fabianmurariu.esoffline.{EsLang, WebDocument, offline}
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.http._
-import monix.eval.Task
-import monix.execution.Callback
-import org.apache.http.entity.StringEntity
-import org.apache.http.message.BasicHeader
-import org.apache.spark.sql.{Dataset, Encoder, Encoders, SparkSession}
+import org.apache.spark.sql.{Dataset, SparkSession}
 import org.scalatest.{FlatSpec, Matchers}
 
 class offlineTest extends FlatSpec with Matchers {
 
   implicit val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
 
-  "offline-indexing" should "trigger the offline indexing of a dataset" in {
+  "offline-indexing" should "trigger the offline indexing of a dataset" ignore {
     offline.loadWETFiles("data/*.warc.wet.gz").show(5)
 
   }
 
-  it should "load the CC index and surface metadata" in {
+  it should "load the CC index and surface metadata" ignore {
     offline.loadIndexFiles("data/cdx-00000.gz").show(500, truncate = false)
   }
 
   it should "start an ES instance and configure the language ingest pipeline" in {
+    import com.sksamuel.elastic4s.http.ElasticDsl._
     import offline._
     import spark.implicits._
-    import io.circe.generic.auto._
-    import com.sksamuel.elastic4s.circe._
-    import com.sksamuel.elastic4s.http.ElasticDsl._
 
     val a1: Dataset[WebDocument] = loadWETFiles("data/*.warc.wet.gz")
-    val counts = a1.indexPartitionHttp[Int](5, EsLang.createPipeline) {
+    val counts = a1.sample(0.1).indexPartitionHttp[Int](10, EsLang.createPipeline) {
       (client: ElasticClient, wds: Seq[WebDocument]) =>
         client.execute(
           bulk(
