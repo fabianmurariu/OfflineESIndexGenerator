@@ -39,17 +39,17 @@ object EsNode {
   }.map{ln => ElasticClient.fromRestClient(RestClient.builder(new HttpHost(ln.ip, ln.port)).build()) }
 
 
-  def http(partitionId: Int, attemptId: Int, localPath: Option[Path], additionalSettings: (String, String)*): Task[ElasticClient] = {
+  def http(partitionId: Int, attemptId: Int, localPath: Path, additionalSettings: (String, String)*): Task[ElasticClient] = {
     {
       for {
-        path <- Task(localPath.getOrElse(Paths.get(s"offline_worker_${partitionId}_$attemptId"))).map {
+        path <- Task(localPath).map {
           case p if Files.exists(p) =>
             FileUtils.forceDelete(p.toFile)
             Files.createDirectory(p)
           case p =>
             Files.createDirectory(p)
         }
-        builder <- defaultSettings(path, partitionId, attemptId, true)
+        builder <- defaultSettings(path, partitionId, attemptId)
         settings <- Task(additionalSettings.foldLeft(builder) { case (b, (k, v)) => b.put(k, v) }.build())
         client <- localNodeWithHttp(settings)
       } yield client

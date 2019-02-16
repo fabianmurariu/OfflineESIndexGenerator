@@ -1,5 +1,7 @@
 package com.github.fabianmurariu.esoffline
 
+import java.net.URI
+
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.http._
 import org.apache.spark.sql.{Dataset, SparkSession}
@@ -24,16 +26,31 @@ class offlineTest extends FlatSpec with Matchers {
     import spark.implicits._
 
     val a1: Dataset[WebDocument] = loadWETFiles("data/*.warc.wet.gz")
-    val counts = a1.sample(0.1).indexPartitionHttp[Int](10, EsLang.createPipeline) {
+    val counts = a1.sample(0.1).indexPartitionHttp[Int](
+      batchSize = 10,
+      dest = new URI("./repo"), indices = Seq("docs1", "docs2"),
+      init = EsLang.createPipeline) {
       (client: ElasticClient, wds: Seq[WebDocument]) =>
         client.execute(
           bulk(
-            wds.map{
+            wds.map {
               wd =>
-                indexInto("docs" / "doc")
+                indexInto("docs1" / "doc")
                   .fields("text" -> wd.text).routing("<CONSTANT>")
                   .refresh(RefreshPolicy.IMMEDIATE)
             }
+
+          )
+        ).await
+        client.execute(
+          bulk(
+            wds.map {
+              wd =>
+                indexInto("docs2" / "doc")
+                  .fields("text" -> wd.text).routing("<CONSTANT>")
+                  .refresh(RefreshPolicy.IMMEDIATE)
+            }
+
           )
         ).await
         1

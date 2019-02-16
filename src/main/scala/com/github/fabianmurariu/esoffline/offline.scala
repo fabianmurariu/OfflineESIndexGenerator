@@ -1,7 +1,10 @@
 package com.github.fabianmurariu.esoffline
 
 import java.io.ByteArrayOutputStream
+import java.net.URI
+import java.nio.file.Paths
 
+import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
 import com.sksamuel.elastic4s.http.{ElasticClient, HttpClient}
 import monix.eval.Task
 import monix.execution.Scheduler
@@ -18,12 +21,13 @@ object offline {
 
   implicit class OfflineIndexDatasetOps[T](val ds: Dataset[T]) {
 
-    def indexPartitionHttp[U](batchSize: Int, init: ElasticClient => Task[ElasticClient] = Task(_))
+    def indexPartitionHttp[U](batchSize: Int, dest: URI, indices: Seq[String], init: ElasticClient => Task[ElasticClient] = Task(_))
                              (f: (ElasticClient, Seq[T]) => U)(implicit E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
       ds.mapPartitions {
         ts =>
           val tc = TaskContext.get()
-          val client: Task[ElasticClient] = EsNode.http(tc.partitionId(), tc.attemptNumber(), None).flatMap(init).memoize
+          val localEsPath = Paths.get(s"offline_worker_${tc.partitionId()}_${tc.attemptNumber()}")
+          val client: Task[ElasticClient] = EsNode.http(tc.partitionId(), tc.attemptNumber(), localEsPath).flatMap(init).memoize
           implicit val s: SchedulerService = Scheduler.io()
           implicit val cb: CanBlock = CanBlock.permit
 
@@ -33,12 +37,12 @@ object offline {
                 client.map(tc => f(tc, t)).attempt.runSyncUnsafe() match {
                   case Right(v) => OfflineResult(Some(v))
                   case Left(failure) =>
-                    failure.printStackTrace()
                     OfflineResult(Option.empty[U], Some(failure.getMessage))
                 }
             }
 
-          EsLang.endStream[OfflineResult[U]]( iterator.toStream, client).iterator
+          EsLang.endStream[OfflineResult[U]](
+            iterator.toStream, client, OfflineIndexPartition(TaskContext.getPartitionId(), dest, localEsPath, indices)).iterator
       }
     }
   }

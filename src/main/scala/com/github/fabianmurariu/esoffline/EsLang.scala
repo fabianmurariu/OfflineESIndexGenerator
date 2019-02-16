@@ -1,14 +1,14 @@
 package com.github.fabianmurariu.esoffline
 
-import com.sksamuel.elastic4s.Index
-import com.sksamuel.elastic4s.http._
-import com.sksamuel.elastic4s.http.snapshots.CreateSnapshotResponse
-import monix.eval.Task
-import monix.execution.schedulers.{ExecutorScheduler, SchedulerService}
-import monix.execution.{Callback, Scheduler}
-import org.apache.spark.TaskContext
+import java.net.URI
 
-import scala.concurrent.Future
+import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
+import com.sksamuel.elastic4s.{Index, Indexes}
+import com.sksamuel.elastic4s.http._
+import monix.eval.Task
+import monix.execution.schedulers.SchedulerService
+import monix.execution.{Callback, Scheduler}
+import org.apache.hadoop.conf.Configuration
 
 object EsLang {
 
@@ -47,7 +47,12 @@ object EsLang {
 
     val createIndexTask = Task.deferFuture {
       elasticClient.execute {
-        createIndex("docs").mappings(
+        createIndex("docs1").mappings(
+          mapping("doc").fields(
+            textField("text")
+          )
+        )
+        createIndex("docs2").mappings(
           mapping("doc").fields(
             textField("text")
           )
@@ -67,7 +72,10 @@ object EsLang {
     createLangPipeline.flatMap(_ => createTemplateTask).flatMap(_ => createIndexTask).map(_ => elasticClient)
   }
 
-  def endStream[T](s: Stream[T], elasticClient: Task[ElasticClient]): Stream[T] = {
+  def uploadToDest(o: OfflineIndexPartition): Task[Unit] =
+    new Hdfs.HdfsRepo(new Configuration()).copyToHDFS(o)
+
+  def endStream[T](s: Stream[T], elasticClient: Task[ElasticClient], o: OfflineIndexPartition): Stream[T] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
     implicit val ss: SchedulerService = Scheduler.io()
 
@@ -76,14 +84,15 @@ object EsLang {
         elasticClient.flatMap { ec =>
           Task.deferFuture {
             ec.execute {
-              flushIndex("docs")
-              forceMerge("docs")
-              createSnapshot(s"offline-snapshot", "offline-backup").index(Index("docs")).waitForCompletion(true)
+              flushIndex(o.indices)
+              forceMerge(o.indices)
+              createSnapshot(s"offline-snapshot", "offline-backup")
+                .indices(Indexes(o.indices)).waitForCompletion(true)
             }
           }
-        }.map(println).runSyncUnsafe()
+        }.flatMap(_ => uploadToDest(o)).runSyncUnsafe()
         Stream.empty[T]
-      case head #:: next => head #:: endStream(next, elasticClient)
+      case head #:: next => head #:: endStream(next, elasticClient, o)
     }
   }
 
