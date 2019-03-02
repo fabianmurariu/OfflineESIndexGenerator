@@ -4,6 +4,8 @@ import java.net.URI
 
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.http._
+import monix.execution.Scheduler
+import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.sql.{Dataset, SparkSession}
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -11,16 +13,8 @@ class offlineTest extends FlatSpec with Matchers {
 
   implicit val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
 
-  "offline-indexing" should "trigger the offline indexing of a dataset" ignore {
-    offline.loadWETFiles("data/*.warc.wet.gz").show(5)
 
-  }
-
-  it should "load the CC index and surface metadata" ignore {
-    offline.loadIndexFiles("data/cdx-00000.gz").show(500, truncate = false)
-  }
-
-  it should "start an ES instance and configure the language ingest pipeline" in {
+  "Offline Index" should "start an ES instance and configure the language ingest pipeline" in {
     import com.sksamuel.elastic4s.http.ElasticDsl._
     import offline._
     import spark.implicits._
@@ -57,6 +51,17 @@ class offlineTest extends FlatSpec with Matchers {
     }.count
 
     assert(counts > 0)
+
+    implicit val sched = Scheduler.io()
+    implicit val fs:FileSystem = FileSystem.get(spark.sparkContext.hadoopConfiguration)
+    EsLang.renameIndicesAndSnapshot("repo").runSyncUnsafe()
+
+  }
+
+  it should "rename indices and snapshots" ignore {
+    implicit val sched = Scheduler.io()
+    implicit val fs:FileSystem = FileSystem.get(spark.sparkContext.hadoopConfiguration)
+    EsLang.renameSnapFilesInSegments("repo").runSyncUnsafe()
 
   }
 

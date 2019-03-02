@@ -1,14 +1,14 @@
 package com.github.fabianmurariu.esoffline
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 
 import com.sksamuel.elastic4s.embedded.LocalNode
-import com.sksamuel.elastic4s.http.{ElasticClient, HttpClient}
+import com.sksamuel.elastic4s.http.ElasticClient
 import monix.eval.Task
 import org.apache.commons.io.FileUtils
 import org.apache.http.HttpHost
 import org.apache.log4j.Logger
-import org.elasticsearch.client.{RestClient, RestClientBuilder}
+import org.elasticsearch.client.RestClient
 import org.elasticsearch.common.settings.Settings
 
 object EsNode {
