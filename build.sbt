@@ -5,7 +5,10 @@ lazy val root = (project in file(".")).
     name := "OfflineESIndex",
     version := "3.0.0",
     scalaVersion := "2.11.11",
-    mainClass in Compile := Some("sk.eset.dbsystems.OfflineESIndexGenerator")
+    mainClass in Compile := Some("sk.eset.dbsystems.OfflineESIndexGenerator"),
+    Test / fork := true,
+    Test / javaOptions += "-Xmx8G",
+    resolvers += Resolver.mavenLocal
   )
 
 val circeVersion = "0.10.0"
@@ -36,6 +39,7 @@ libraryDependencies ++= Seq(
   "com.google.guava" % "guava" % "14.0.1",
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
+  "com.optimaize.languagedetector" % "language-detector" % "0.7.1",
   "org.netpreserve.commons" % "webarchive-commons" % "1.1.8" exclude("org.apache.hadoop", "hadoop-core")
 )
 

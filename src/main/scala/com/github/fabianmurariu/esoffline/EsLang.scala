@@ -1,46 +1,29 @@
 package com.github.fabianmurariu.esoffline
 
 import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
+import com.optimaize.langdetect.i18n.LdLocale
 import com.sksamuel.elastic4s.Indexes
 import com.sksamuel.elastic4s.http._
 import io.circe.generic.auto._
 import io.circe.parser._
 import monix.eval.Task
+import monix.execution.Scheduler
 import monix.execution.schedulers.SchedulerService
-import monix.execution.{Callback, Scheduler}
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.DirectoryFileFilter.DIRECTORY
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, RemoteIterator, Path => HPath}
+import org.apache.hadoop.fs.{FileSystem, Path => HPath}
 
+import com.optimaize.langdetect.LanguageDetectorBuilder
+import com.optimaize.langdetect.ngram.NgramExtractors
+import com.optimaize.langdetect.profiles.LanguageProfileReader
+import com.optimaize.langdetect.text.CommonTextObjectFactories
 import scala.io.Source
 
 object EsLang {
 
   def createPipeline(elasticClient: ElasticClient): Task[ElasticClient] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
-
-    val restClient = elasticClient.client
-    val body =
-      """
-        | {
-        |  "description": "A pipeline to index data into language specific analyzers",
-        |  "processors": [
-        |    {
-        |      "langdetect": {
-        |        "field": "my_field",
-        |        "target_field": "lang"
-        |      }
-        |    },
-        |    {
-        |      "script": {
-        |        "source": "ctx.language = [:];ctx.language[ctx.lang] = ctx.remove('my_field')"
-        |      }
-        |    }
-        |  ]
-        | }
-      """.stripMargin
-    val stringEntity = HttpEntity(body)
 
     val createTemplateTask = Task.deferFuture {
       elasticClient.execute(
@@ -52,14 +35,15 @@ object EsLang {
 
     val createIndexTask = Task.deferFuture {
       elasticClient.execute {
-        createIndex("docs1").mappings(
+        createIndex("docs").mappings(
           mapping("doc").fields(
-            textField("text")
-          )
-        )
-        createIndex("docs2").mappings(
-          mapping("doc").fields(
-            textField("text")
+            textField("text").nullable(true).analyzer("standard"),
+            textField(name="lang").nullable(true),
+            textField(name = "field_en").nullable(true).analyzer("english"),
+            textField(name = "field_de").nullable(true).analyzer("german"),
+            textField(name = "field_fr").nullable(true).analyzer("french"),
+            textField(name = "field_ar").nullable(true).analyzer("arabic"),
+            textField("field_bn").nullable(true).analyzer("bengali")
           )
         )
         createRepository("offline-backup", "fs").settings(Map(
@@ -69,12 +53,7 @@ object EsLang {
       }
     }
 
-    val createLangPipeline = Task.async {
-      cb: Callback[Throwable, HttpResponse] =>
-        restClient.send(ElasticRequest("PUT", "_ingest/pipeline/langdetect-analyzer-pipeline", stringEntity), cb)
-    }
-
-    createLangPipeline.flatMap(_ => createTemplateTask).flatMap(_ => createIndexTask).map(_ => elasticClient)
+    createTemplateTask.flatMap(_ => createIndexTask).map(_ => elasticClient)
   }
 
   def endStream[T](s: Stream[T], elasticClient: Task[ElasticClient], o: OfflineIndexPartition): Stream[T] = {
@@ -173,18 +152,24 @@ object EsLang {
 
   def renameIndicesAndSnapshot(dest: String)(implicit fs: FileSystem): Task[Unit] =
     renameSnapshotIndices(dest).flatMap(_ => renameSnapFilesInSegments(dest))
-}
 
-class IteratorWrapper[+E](ri: RemoteIterator[E]) extends Iterator[Either[Exception, E]] {
-  override def hasNext: Boolean = try {
-    ri.hasNext
-  } catch {
-    case t: Exception => false
+  def langDetect: String => Option[LdLocale] = {
+    //load all languages://load all languages:
+
+    val languageProfiles = new LanguageProfileReader().readAllBuiltIn
+
+    //build language detector:
+    val languageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard).withProfiles(languageProfiles).build
+
+    //create a text object factory
+    val textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText
+
+    { text: String =>
+      val textObject = textObjectFactory.forText(text)
+      val maybeLang = languageDetector.detect(textObject)
+      if (maybeLang.isPresent) Some(maybeLang.get())
+      else None
+    }
   }
 
-  override def next(): Either[Exception, E] = try {
-    Right(ri.next())
-  } catch {
-    case e: Exception => Left(e)
-  }
 }
