@@ -11,7 +11,6 @@ import org.apache.spark.sql.{Dataset, SparkSession}
 import org.scalatest.{FlatSpec, Matchers}
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.util.Try
 
 class offlineTest extends FlatSpec with Matchers {
 
@@ -33,10 +32,9 @@ class offlineTest extends FlatSpec with Matchers {
         client.execute(
           bulk(
             wds.map {
-              wd =>
-                val detectedLang = detectLang(wd.text).flatMap(i => Option(i.getLanguage))
+              case WebDocument(_, date, length, mime, url, _, _, text) =>
+                val detectedLang = detectLang(text).flatMap(i => Option(i.getLanguage))
                 val textFieldName = detectedLang match {
-                  case None => "text"
                   case Some("ar") => "field_ar"
                   case Some("bn") => "field_bn"
                   case Some("bg") => "field_bg"
@@ -45,9 +43,18 @@ class offlineTest extends FlatSpec with Matchers {
                   case Some("en") => "field_en"
                   case Some("de") => "field_de"
                   case Some("fr") => "field_fr"
+                  case Some("ru") => "field_ru"
+                  case _ => "text"
                 }
                 indexInto("docs" / "doc")
-                  .fields("text" -> wd.text, "lang" -> detectedLang.getOrElse("UNKNOWN"))
+                  .fields(
+                    textFieldName -> text,
+                    "lang" -> detectedLang.getOrElse("UNKNOWN"),
+                    "url" -> url,
+                    "mime" -> mime,
+                    "length" -> length,
+                    "date" -> date
+                  )
                   .routing("<CONSTANT>")
                   .refresh(RefreshPolicy.IMMEDIATE)
             }
@@ -61,13 +68,6 @@ class offlineTest extends FlatSpec with Matchers {
     implicit val sched = Scheduler.io()
     implicit val fs: FileSystem = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     EsLang.renameIndicesAndSnapshot("repo").runSyncUnsafe()
-
-  }
-
-  it should "rename indices and snapshots" ignore {
-    implicit val sched = Scheduler.io()
-    implicit val fs: FileSystem = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-    EsLang.renameSnapFilesInSegments("repo").runSyncUnsafe()
 
   }
 

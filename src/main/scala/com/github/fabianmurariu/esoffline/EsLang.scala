@@ -38,12 +38,19 @@ object EsLang {
         createIndex("docs").mappings(
           mapping("doc").fields(
             textField("text").nullable(true).analyzer("standard"),
-            textField(name="lang").nullable(true),
-            textField(name = "field_en").nullable(true).analyzer("english"),
-            textField(name = "field_de").nullable(true).analyzer("german"),
-            textField(name = "field_fr").nullable(true).analyzer("french"),
-            textField(name = "field_ar").nullable(true).analyzer("arabic"),
-            textField("field_bn").nullable(true).analyzer("bengali")
+            textField("lang"),
+            textField("url"),
+            textField("mine"),
+            longField("length"),
+            dateField("date"),
+            textField("field_en").nullable(true).analyzer("english"),
+            textField("field_de").nullable(true).analyzer("german"),
+            textField("field_fr").nullable(true).analyzer("french"),
+            textField("field_ar").nullable(true).analyzer("arabic"),
+            textField("field_bn").nullable(true).analyzer("bengali"),
+            textField("field_ca").nullable(true).analyzer("catalan"),
+            textField("field_cz").nullable(true).analyzer("czech"),
+            textField("field_ru").nullable(true).analyzer("russian")
           )
         )
         createRepository("offline-backup", "fs").settings(Map(
