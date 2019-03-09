@@ -2,6 +2,7 @@ package com.github.fabianmurariu.esoffline
 
 import java.net.URI
 
+import com.google.common.net.InternetDomainName
 import com.optimaize.langdetect.i18n.LdLocale
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.http._
@@ -11,6 +12,7 @@ import org.apache.spark.sql.{Dataset, SparkSession}
 import org.scalatest.{FlatSpec, Matchers}
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.Try
 
 class offlineTest extends FlatSpec with Matchers {
 
@@ -34,23 +36,17 @@ class offlineTest extends FlatSpec with Matchers {
             wds.map {
               case WebDocument(_, date, length, mime, url, _, _, text) =>
                 val detectedLang = detectLang(text).flatMap(i => Option(i.getLanguage))
-                val textFieldName = detectedLang match {
-                  case Some("ar") => "field_ar"
-                  case Some("bn") => "field_bn"
-                  case Some("bg") => "field_bg"
-                  case Some("ca") => "field_ca"
-                  case Some("cs") => "field_cz"
-                  case Some("en") => "field_en"
-                  case Some("de") => "field_de"
-                  case Some("fr") => "field_fr"
-                  case Some("ru") => "field_ru"
-                  case _ => "text"
-                }
+                val lang = detectedLang.getOrElse("UNKNOWN")
+                val textFieldName = EsLang.supportedLang.get(lang).map(name => s"field_$name").getOrElse("text")
+                val host = Try(URI.create(url).getHost)
+                val domain = host.map(h => InternetDomainName.from(h).topPrivateDomain().name())
                 indexInto("docs" / "doc")
                   .fields(
                     textFieldName -> text,
-                    "lang" -> detectedLang.getOrElse("UNKNOWN"),
+                    "lang" -> lang,
                     "url" -> url,
+                    "host" -> host.getOrElse(""),
+                    "domain" -> domain.getOrElse(""),
                     "mime" -> mime,
                     "length" -> length,
                     "date" -> date

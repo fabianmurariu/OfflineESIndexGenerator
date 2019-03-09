@@ -22,6 +22,16 @@ import scala.io.Source
 
 object EsLang {
 
+  val supportedLang: Map[String, String] = Seq("arabic" -> "ar", "basque" -> "eu",
+    "bengali" -> "bn", "brazilian" -> "pt", "bulgarian" -> "bg", "catalan" -> "ca",
+    "czech" -> "cs", "danish" -> "da", "dutch" -> "nl",
+    "english" -> "en", "finnish" -> "fi", "french" -> "fr",
+    "german" -> "de", "greek" -> "el", "hindi" -> "hi", "hungarian" -> "hu",
+    "indonesian" -> "id", "irish" -> "ga", "italian" -> "it", "latvian" -> "lv",
+    "lithuanian" -> "lt", "norwegian" -> "no", "persian" -> "fa", "portuguese" -> "pt",
+    "romanian" -> "ro", "russian" -> "ru", "spanish" -> "es",
+    "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th").map(_.swap).toMap
+
   def createPipeline(elasticClient: ElasticClient): Task[ElasticClient] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
 
@@ -34,23 +44,17 @@ object EsLang {
     }
 
     val createIndexTask = Task.deferFuture {
+      val langFields = supportedLang.values.map(lang => textField(s"field_$lang")).toList
       elasticClient.execute {
         createIndex("docs").mappings(
-          mapping("doc").fields(
-            textField("text").nullable(true).analyzer("standard"),
+          mapping("doc").fields(List(
+            textField("text").analyzer("standard"),
             textField("lang"),
             textField("url"),
-            textField("mine"),
+            textField("host"),
+            textField("mime"),
             longField("length"),
-            dateField("date"),
-            textField("field_en").nullable(true).analyzer("english"),
-            textField("field_de").nullable(true).analyzer("german"),
-            textField("field_fr").nullable(true).analyzer("french"),
-            textField("field_ar").nullable(true).analyzer("arabic"),
-            textField("field_bn").nullable(true).analyzer("bengali"),
-            textField("field_ca").nullable(true).analyzer("catalan"),
-            textField("field_cz").nullable(true).analyzer("czech"),
-            textField("field_ru").nullable(true).analyzer("russian")
+            dateField("date")) ++ langFields
           )
         )
         createRepository("offline-backup", "fs").settings(Map(
