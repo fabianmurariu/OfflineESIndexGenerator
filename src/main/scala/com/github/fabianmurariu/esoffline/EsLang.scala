@@ -13,11 +13,12 @@ import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.DirectoryFileFilter.DIRECTORY
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path => HPath}
-
 import com.optimaize.langdetect.LanguageDetectorBuilder
 import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.CommonTextObjectFactories
+import org.apache.spark.TaskContext
+
 import scala.io.Source
 
 object EsLang {
@@ -87,7 +88,6 @@ object EsLang {
       case head #:: next => head #:: endStream(next, elasticClient, o)
     }
   }
-
 
   def liftDataSegmentToHDFS(o: OfflineIndexPartition, conf: Configuration = new Configuration()): Task[Unit] = o match {
     case OfflineIndexPartition(partitionId, dest, localPath, _) =>
