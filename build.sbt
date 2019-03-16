@@ -40,6 +40,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
   "com.optimaize.languagedetector" % "language-detector" % "0.7.1",
+  "org.apache.commons" % "commons-collections4" % "4.3",
   "org.netpreserve.commons" % "webarchive-commons" % "1.1.8" exclude("org.apache.hadoop", "hadoop-core")
 )
 

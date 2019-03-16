@@ -45,11 +45,11 @@ object EsLang {
     }
 
     val createIndexTask = Task.deferFuture {
-      val langFields = supportedLang.values.map(lang => textField(s"field_$lang")).toList
+      val langFields = supportedLang.values.map(lang => textField(s"field_$lang").store(false)).toList
       elasticClient.execute {
         createIndex("docs").mappings(
           mapping("doc").fields(List(
-            textField("text").analyzer("standard"),
+            textField("text").analyzer("standard").store(false),
             textField("lang"),
             textField("url"),
             textField("host"),
