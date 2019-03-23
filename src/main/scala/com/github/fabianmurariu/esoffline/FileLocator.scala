@@ -1,74 +1,34 @@
 package com.github.fabianmurariu.esoffline
 
-import java.net.URI
-import java.nio.file.Path
-import java.util.Comparator
-
-import org.apache.commons.collections4.trie.PatriciaTrie
-import org.apache.hadoop.fs.{Path => HPath}
-
-import scala.io.Source
+import org.apache.spark.sql.SparkSession
 
 object FileLocator {
 
+  def loadWETFromIndex(config: OfflineIndexConf)(implicit spark: SparkSession): Vector[String] = {
 
-  case class Meta(file: Seq[String], from: Int, to: Int)
+    import spark.implicits._
+    val indices = config.indices
+    val frame = spark.read.parquet(config.indexRoot)
+      .where('crawl.isin(indices: _*))
+      .where('subset === "warc")
+      .where('fetch_status === 200)
 
-  case class CDXMeta(surt: String, meta: Option[Meta] = None)
+    val frameDomainSubset = if (config.hosts.isEmpty) frame
+    else frame.where('url_host_registered_domain.isin(config.hosts.toSeq: _*))
 
-  sealed trait CCIndexMeta {
-    self =>
+    val index = if (config.where.isEmpty) frameDomainSubset
+    else frameDomainSubset.where(config.where.get)
 
-    def pathsFor(hosts: Seq[String]): Seq[CDXMeta] = self match {
-      case li@LocalIndexMeta(_) =>
-        import scala.collection.JavaConversions._
+    val outFiles = index
+      .select("warc_filename")
+      .distinct()
+      .as[String]
+      .map(_.replaceAll("/warc/", "/wet/").replaceAll("warc.gz", "warc.wet.gz"))
+      .collect().toVector
 
-        val pt = li.reversedUrls
+    assert(outFiles.nonEmpty, s"No warc files found for $config")
 
-        hosts.flatMap {
-          host =>
-            val reverseUrl = new URI(s"http://$host/").getHost.split("\\.").reverse.mkString(",")
-            val strings = pt.prefixMap(reverseUrl).values()
-            if (strings.nonEmpty) strings
-            else {
-              val value = pt.selectKey(reverseUrl)
-              Seq(pt.get(pt.previousKey(value)))
-            }
-        }
-      case _ => ???
-    }
-
+    outFiles
   }
-
-  case class LocalIndexMeta(root: Path) extends CCIndexMeta {
-
-    def truncateSurt(meta: CDXMeta): String = meta.surt.takeWhile(_ != ')')
-
-    @transient lazy val reversedUrls: PatriciaTrie[CDXMeta] = {
-      import scala.collection.JavaConversions.mapAsJavaMap
-
-      val groupedMetas = Source.fromFile(root.resolve("indexes/cluster.idx").toFile).getLines().flatMap {
-        _.split("\\s+").toList match {
-          case List(reversedUrl, _, file, from, to, _) =>
-            List(CDXMeta(reversedUrl, Some(Meta(Seq(file), from.toInt, to.toInt))))
-          case _ => List.empty
-        }
-      }.toVector.groupBy(truncateSurt).map {
-        case (reversedUrl, vals) =>
-          val minFrom = vals.collect { case i if i.meta.isDefined => i.meta.get.from }.min
-          val maxTo = vals.collect { case i if i.meta.isDefined => i.meta.get.to }.sum
-          val files = vals.collect { case i if i.meta.isDefined => i.meta.get.file }.flatten.distinct
-          reversedUrl -> CDXMeta(reversedUrl, Some(Meta(files, minFrom, maxTo)))
-      }
-
-      new PatriciaTrie(groupedMetas)
-    }
-  }
-
-  case class HDFSIndexMeta(path: HPath) extends CCIndexMeta
-
-  "s3://commoncrawl/cc-index/collections/CC-MAIN-2019-04/indexes/cluster.idx"
-
-  def indexPaths(index: String) = s"s3://commoncrawl/crawl-data/$index/cc-index.paths.gz"
 
 }

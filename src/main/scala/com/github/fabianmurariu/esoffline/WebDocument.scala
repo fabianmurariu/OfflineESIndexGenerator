@@ -11,9 +11,15 @@ import monix.eval.Task
 
 import scala.util.Try
 
-case class WebDocument(origin: String, date: String, length: Long, mime: String, url: String, version: String, recordId: String, text: String)
+case class WebDocument(origin: String, date: String, length: Long, mime: String, url: String, version: String, recordId: String, text: String, topDomain: Option[String] = None)
 
 object WebDocument {
+
+  def privateTopDomain(url: String): Option[String] = {
+    val host = Try(URI.create(url).getHost)
+    host.map(h => InternetDomainName.from(h).topPrivateDomain().name()).toOption
+  }
+
   implicit val offlineIndexable: OfflineIndexable[String => Option[LdLocale], Int, WebDocument] = new OfflineIndexable[String => Option[LdLocale], Int, WebDocument] {
     override def routing(t: WebDocument): String = "<CONSTANT>"
 
@@ -27,19 +33,18 @@ object WebDocument {
       client.execute(
         bulk(
           wds.map {
-            case WebDocument(_, date, length, mime, url, _, _, text) =>
+            case WebDocument(_, date, length, mime, url, _, _, text, topDomain) =>
               val detectedLang = detectLang(text).flatMap(i => Option(i.getLanguage))
               val lang = detectedLang.getOrElse("UNKNOWN")
               val textFieldName = EsLang.supportedLang.get(lang).map(name => s"field_$name").getOrElse("text")
               val host = Try(URI.create(url).getHost)
-              val domain = host.map(h => InternetDomainName.from(h).topPrivateDomain().name())
               indexInto("docs" / "doc")
                 .fields(
                   textFieldName -> text,
                   "lang" -> lang,
                   "url" -> url,
                   "host" -> host.getOrElse(""),
-                  "domain" -> domain.getOrElse(""),
+                  "domain" -> topDomain.getOrElse(""),
                   "mime" -> mime,
                   "length" -> length,
                   "date" -> date

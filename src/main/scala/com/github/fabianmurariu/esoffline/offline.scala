@@ -5,7 +5,7 @@ import java.net.URI
 import java.nio.file.Paths
 
 import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
-import com.sksamuel.elastic4s.http.{ElasticClient, HttpClient}
+import com.sksamuel.elastic4s.http.ElasticClient
 import monix.eval.Task
 import monix.execution.Scheduler
 import monix.execution.schedulers.{CanBlock, SchedulerService}
@@ -21,7 +21,8 @@ object offline {
 
   implicit class OfflineIndexDatasetOps[T](val ds: Dataset[T]) {
 
-    def indexPartitionHttp2[U, X](batchSize: Int, dest:URI)(implicit O: OfflineIndexable[X, U, T], E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
+    def indexPartitionHttp2[U, X](batchSize: Int, dest: URI)
+                                 (implicit O: OfflineIndexable[X, U, T], E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
       ds.mapPartitions {
         ts: Iterator[T] =>
           val x = O.partitionContext
@@ -46,41 +47,13 @@ object offline {
       }
     }
 
-    def indexPartitionHttp[U, X](batchSize: Int, dest: URI, indices: Seq[String],
-                                 init: ElasticClient => Task[ElasticClient] = Task(_),
-                                 partitionFn: => X)
-                                (f: (ElasticClient, X, Seq[T]) => U)
-                                (implicit E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
-      ds.mapPartitions {
-        ts =>
-          val x = partitionFn
-          val tc = TaskContext.get()
-          val localEsPath = Paths.get(s"offline_worker_${tc.partitionId()}_${tc.attemptNumber()}")
-          val client: Task[ElasticClient] = EsNode.http(tc.partitionId(), tc.attemptNumber(), localEsPath).flatMap(init).memoize
-          implicit val s: SchedulerService = Scheduler.io()
-          implicit val cb: CanBlock = CanBlock.permit
-
-          val iterator = ts.grouped(batchSize)
-            .map {
-              t: Seq[T] =>
-                client.map(elClient => f(elClient, x, t)).attempt.runSyncUnsafe() match {
-                  case Right(v) => OfflineResult(Some(v))
-                  case Left(failure) =>
-                    OfflineResult(Option.empty[U], Some(failure.getMessage))
-                }
-            }
-
-          EsLang.endStream[OfflineResult[U]](
-            iterator.toStream, client, OfflineIndexPartition(TaskContext.getPartitionId(), dest, localEsPath, indices)).iterator
-      }
-    }
   }
 
   def loadWETFiles(path: String)(implicit spark: SparkSession): Dataset[WebDocument] = {
     import spark.implicits._
 
     import scala.collection.JavaConversions.iterableAsScalaIterable
-    spark.sparkContext.newAPIHadoopFile[Text, ArchiveReader, WARCFileInputFormat]("data/*.warc.wet.gz")
+    spark.sparkContext.newAPIHadoopFile[Text, ArchiveReader, WARCFileInputFormat](path)
       .flatMap {
         case (file, archive: ArchiveReader) =>
           archive.map {
@@ -90,28 +63,18 @@ object offline {
               record.dump(os)
               os.close()
               val text = new String(os.toByteArray, "UTF-8")
-              WebDocument(file.toString, header.getDate, header.getContentLength, header.getMimetype, header.getUrl, header.getVersion, header.getRecordIdentifier, text)
+              WebDocument(origin = file.toString,
+                date = header.getDate,
+                length = header.getContentLength,
+                mime = header.getMimetype,
+                url = header.getUrl,
+                version = header.getVersion,
+                recordId = header.getRecordIdentifier,
+                text = text,
+                topDomain = WebDocument.privateTopDomain(header.getUrl))
           }
       }.toDS()
 
-  }
-
-  def loadIndexFiles(path: String)(implicit spark: SparkSession): Dataset[WARCIndexDoc] = {
-    import spark.implicits._
-    import org.apache.spark.sql.functions.get_json_object
-    val frame = spark.read.text(path).as[String].map {
-      line =>
-        val from = line.indexOf("{")
-        line.substring(from)
-    }.toDF("value")
-    frame.show(5, truncate = false)
-    frame
-      .select(get_json_object('value, "$.languages").as("languages"), get_json_object('value, "$.url").as("url"))
-      .as[WARCIndexDoc]
-  }
-
-  trait ESRouting[T] {
-    def route(t: T): String
   }
 
 }
