@@ -2,14 +2,22 @@ package com.github.fabianmurariu.esoffline
 
 import java.nio.file.{Files, Path}
 
-import com.sksamuel.elastic4s.embedded.LocalNode
+import com.sksamuel.elastic4s.embedded.{InternalLocalNode, LocalNode}
 import com.sksamuel.elastic4s.http.ElasticClient
 import monix.eval.Task
 import org.apache.commons.io.FileUtils
 import org.apache.http.HttpHost
 import org.apache.log4j.Logger
+import org.elasticsearch.analysis.common.CommonAnalysisPlugin
 import org.elasticsearch.client.RestClient
 import org.elasticsearch.common.settings.Settings
+import org.elasticsearch.index.reindex.ReindexPlugin
+import org.elasticsearch.percolator.PercolatorPlugin
+import org.elasticsearch.plugin.analysis.kuromoji.AnalysisKuromojiPlugin
+import org.elasticsearch.plugin.analysis.nori.AnalysisNoriPlugin
+import org.elasticsearch.plugin.analysis.smartcn.AnalysisSmartChinesePlugin
+import org.elasticsearch.script.mustache.MustachePlugin
+import org.elasticsearch.transport.Netty4Plugin
 
 object EsNode {
 
@@ -33,11 +41,29 @@ object EsNode {
   }
 
   private def localNodeWithHttp(settings: Settings): Task[ElasticClient] = Task {
-    val ln = LocalNode(settings)
+    require(settings.get("cluster.name") != null)
+    require(settings.get("path.home") != null)
+    require(settings.get("path.data") != null)
+    require(settings.get("path.repo") != null)
+
+    val plugins =
+      List(classOf[Netty4Plugin], classOf[MustachePlugin], classOf[PercolatorPlugin], classOf[ReindexPlugin], classOf[CommonAnalysisPlugin])
+
+    val additionalPlugins =
+      List(classOf[AnalysisKuromojiPlugin], classOf[AnalysisSmartChinesePlugin], classOf[AnalysisNoriPlugin])
+
+    val mergedSettings = Settings
+      .builder()
+      .put(settings)
+      .put("http.type", "netty4")
+      .put("http.enabled", "true")
+      .put("node.max_local_storage_nodes", "10")
+      .build()
+
+    val ln = new InternalLocalNode(mergedSettings, plugins ++ additionalPlugins)
     ln.start()
     ln
-  }.map{ln => ElasticClient.fromRestClient(RestClient.builder(new HttpHost(ln.ip, ln.port)).build()) }
-
+  }.map { ln => ElasticClient.fromRestClient(RestClient.builder(new HttpHost(ln.ip, ln.port)).build()) }
 
   def http(partitionId: Int, attemptId: Int, localPath: Path, additionalSettings: (String, String)*): Task[ElasticClient] = {
     {

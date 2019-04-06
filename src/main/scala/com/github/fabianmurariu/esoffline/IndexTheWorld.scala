@@ -22,15 +22,18 @@ object IndexTheWorld {
         val repo = new URI(conf.esSnapshotPath)
         val files = FileLocator.loadWETFromIndex(conf)
 
-        val existingFiles = files.flatMap{ p =>
+        val existingFiles = files.flatMap { p =>
           val fullPath = new Path(conf.filesRoot, p)
           if (conf.filesRoot.startsWith("s3") || fs.exists(fullPath)) List(fullPath)
           else Nil
-        }.mkString(",")
+        }
 
-        loadWETFiles(existingFiles)
+        println(s"${conf.hosts.mkString("[",",","]")} found on ${existingFiles.length} files")
+        existingFiles.foreach(println)
+
+        loadWETFiles(existingFiles.mkString(","))
           .filter(_.topDomain.exists(td => conf.hosts(td)))
-          .repartition(conf.partitions)
+          .coalesce(conf.partitions)
           .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo)
           .cache()
           .count
@@ -63,7 +66,7 @@ object IndexTheWorld {
         (x, c) => c.copy(where = Some(x))
       } text "additional filter to be dropped in the where clause of the CC index"
 
-      opt[String]("cc-index") required() action {
+      opt[String]("cc-index") optional() action {
         (x, c) => c.copy(indexRoot = x)
       }
 
@@ -78,6 +81,11 @@ object IndexTheWorld {
       opt[Boolean]("local") optional() action {
         (x, c) => c.copy(local = x)
       }
+
+      opt[Boolean]("store") optional() action {
+        (x, c) => c.copy(store = x)
+      }
+
 
 
     }
@@ -94,4 +102,5 @@ case class OfflineIndexConf(indices: Seq[String] = Seq.empty,
                             indexRoot: String = "s3://commoncrawl/cc-index/table/cc-main/warc/",
                             esSnapshotPath: String = "s3://offline-elastic-world-index/repo",
                             filesRoot: String = "s3://commoncrawl/",
-                            local: Boolean = false)
+                            local: Boolean = false,
+                            store: Boolean = false)

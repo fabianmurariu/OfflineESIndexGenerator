@@ -31,7 +31,8 @@ object EsLang {
     "indonesian" -> "id", "irish" -> "ga", "italian" -> "it", "latvian" -> "lv",
     "lithuanian" -> "lt", "norwegian" -> "no", "persian" -> "fa", "portuguese" -> "pt",
     "romanian" -> "ro", "russian" -> "ru", "spanish" -> "es",
-    "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th").map(_.swap).toMap
+    "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th", "smartcn" -> "zh",
+    "smartcn" -> "cn", "kuromoji" -> "ja", "nori" -> "ko").map(_.swap).toMap
 
   def createPipeline(elasticClient: ElasticClient): Task[ElasticClient] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
@@ -45,7 +46,9 @@ object EsLang {
     }
 
     val createIndexTask = Task.deferFuture {
-      val langFields = supportedLang.values.map(lang => textField(s"field_$lang").store(false)).toList
+      val langFields = supportedLang.map { case (lang, analyzer) =>
+        textField(s"field_$lang").analyzer(analyzer).store(false)
+      }.toList
       elasticClient.execute {
         createIndex("docs").mappings(
           mapping("doc").fields(List(

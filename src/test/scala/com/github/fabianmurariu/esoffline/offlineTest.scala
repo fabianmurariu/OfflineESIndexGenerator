@@ -10,10 +10,8 @@ import org.scalatest.{FlatSpec, Matchers}
 
 class offlineTest extends FlatSpec with Matchers {
 
-  implicit val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
-
-
-  "Offline Index" should "start an ES instance and configure the language ingest pipeline" in {
+  "Offline Index" should "start an ES instance and configure the language ingest pipeline" ignore {
+    implicit val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
     import offline._
     import spark.implicits._
 

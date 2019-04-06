@@ -8,7 +8,8 @@ lazy val root = (project in file(".")).
     mainClass in Compile := Some("sk.eset.dbsystems.OfflineESIndexGenerator"),
     Test / fork := true,
     Test / javaOptions += "-Xmx8G",
-    resolvers += Resolver.mavenLocal
+    resolvers += Resolver.mavenLocal,
+    test in assembly := {}
   )
 
 val circeVersion = "0.10.0"
@@ -22,8 +23,8 @@ libraryDependencies ++= Seq(
 val elastic4sVersion = "6.5.1"
 
 libraryDependencies ++= Seq(
-  "org.apache.spark" %% "spark-core" % "2.3.2" % "provided",
-  "org.apache.spark" %% "spark-sql" % "2.3.2" % "provided",
+  "org.apache.spark" %% "spark-core" % "2.4.0" % "provided",
+  "org.apache.spark" %% "spark-sql" % "2.4.0" % "provided",
   "com.github.scopt" %% "scopt" % "3.5.0",
   "org.apache.logging.log4j" % "log4j-api" % "2.11.1",
   "org.apache.logging.log4j" % "log4j-core" % "2.11.1",
