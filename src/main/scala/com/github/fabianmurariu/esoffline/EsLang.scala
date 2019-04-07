@@ -17,11 +17,15 @@ import com.optimaize.langdetect.LanguageDetectorBuilder
 import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.CommonTextObjectFactories
+import com.sksamuel.elastic4s.http.snapshots.CreateSnapshotResponse
+import org.apache.log4j.Logger
 import org.apache.spark.TaskContext
 
 import scala.io.Source
 
 object EsLang {
+
+  @transient lazy val LOG: Logger = Logger.getLogger(this.getClass)
 
   val supportedLang: Map[String, String] = Seq("arabic" -> "ar", "basque" -> "eu",
     "bengali" -> "bn", "brazilian" -> "pt", "bulgarian" -> "bg", "catalan" -> "ca",
@@ -83,10 +87,15 @@ object EsLang {
               flushIndex(o.indices)
               forceMerge(o.indices)
               createSnapshot(s"offline-snapshot", "offline-backup")
-                .indices(Indexes(o.indices)).waitForCompletion(true)
+                .indices(Indexes(o.indices))
+                .waitForCompletion(true)
             }
           }
-        }.flatMap(_ => liftDataSegmentToHDFS(o)).runSyncUnsafe()
+        }.flatMap {
+          out: Response[CreateSnapshotResponse] =>
+           LOG.info(s"SNAPSHOT CREATION RESULT! $out")
+          liftDataSegmentToHDFS(o)
+        }.runSyncUnsafe()
         Stream.empty[T]
       case head #:: next => head #:: endStream(next, elasticClient, o)
     }
@@ -98,6 +107,7 @@ object EsLang {
       val fs: FileSystem = FileSystem.get(conf)
       import scala.collection.JavaConversions._
       val localRepo = localPath.resolve("repo")
+      LOG.info(s"Liftin snapshot from ${localRepo.toAbsolutePath} for $partitionId dest: $partitionId ")
       fs.setWriteChecksum(false)
       //read index0
       // find the segment with data for every index

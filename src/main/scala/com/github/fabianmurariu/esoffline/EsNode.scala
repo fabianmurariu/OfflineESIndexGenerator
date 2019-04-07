@@ -26,6 +26,11 @@ object EsNode {
   private def defaultSettings(root: Path, partitionId: Int, attemptId: Int, http: Boolean = true): Task[Settings.Builder] = Task {
     val clusterName = s"offline-cluster-$partitionId-$attemptId"
     System.setProperty("es.set.netty.runtime.available.processors", "false")
+    val pathData = root.resolve("data")
+    val pathHome = root.resolve("home")
+    val pathRepo = root.resolve("repo")
+    LOG.info(s"Setting up node with repo: ${pathRepo.toAbsolutePath} data: ${pathData.toAbsolutePath} home: ${pathHome.toAbsolutePath}")
+
     Settings.builder
       .put("http.enabled", http)
       .put("processors", 1)
@@ -33,11 +38,11 @@ object EsNode {
       .put("cluster.name", clusterName)
       .put("node.master", true)
       .put("discovery.type", "single-node")
-      .put("path.data", s"${root.resolve("data")}")
+      .put("path.data", s"$pathData")
       .put("indices.memory.index_buffer_size", "5%")
       .put("indices.fielddata.cache.size", "0%")
-      .put("path.repo", s"${root.resolve("repo")}")
-      .put("path.home", s"${root.resolve("home")}")
+      .put("path.repo", s"$pathRepo")
+      .put("path.home", s"${pathHome}")
   }
 
   private def localNodeWithHttp(settings: Settings): Task[ElasticClient] = Task {
