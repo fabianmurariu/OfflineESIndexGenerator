@@ -25,8 +25,10 @@ CLUSTER_ID=$(aws emr create-cluster \
                  --use-default-roles \
                  --ec2-attributes SubnetId=subnet-0f14fbb22e0f0d7e0,KeyName=OfflineIndexer-Emr \
                  --enable-debugging \
+                 --bootstrap-action Path=s3://offline-elastic-world-index/scripts/install_log4j2.sh \
+                 --configurations file://./scripts/spark-defaults-override.json \
                  --log-uri 's3n://aws-logs-bytes32-us-east-1/elasticmapreduce/' \
-                 --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"m5.4xlarge","Name":"Master instance group", "BidPrice":"0.30"}]' \
+                 --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"m5.4xlarge","Name":"Master instance group", "BidPrice":"0.45"}]' \
                  --visible-to-all-users | grep -o 'j-\w*')
 
 echo ${CLUSTER_ID}

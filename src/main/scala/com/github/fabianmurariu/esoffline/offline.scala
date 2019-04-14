@@ -21,29 +21,31 @@ object offline {
 
   implicit class OfflineIndexDatasetOps[T](val ds: Dataset[T]) {
 
-    def indexPartitionHttp2[U, X](batchSize: Int, dest: URI)
+    def indexPartitionHttp2[U, X](batchSize: Int, dest: URI, shards:Int)
                                  (implicit O: OfflineIndexable[X, U, T], E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
       ds.mapPartitions {
         ts: Iterator[T] =>
-          val x = O.partitionContext
+          val pc = O.partitionContext
           val tc = TaskContext.get()
           val localEsPath = Paths.get(s"offline_worker_${tc.partitionId()}_${tc.attemptNumber()}")
-          val client: Task[ElasticClient] = EsNode.http(tc.partitionId(), tc.attemptNumber(), localEsPath).flatMap(O.init).memoize
+          val client: Task[ElasticClient] = EsNode.http(tc.partitionId(), tc.attemptNumber(), localEsPath).flatMap(O.init(shards)).memoize
           implicit val s: SchedulerService = Scheduler.io()
           implicit val cb: CanBlock = CanBlock.permit
 
-          val iterator = ts.grouped(batchSize)
+          tc.addTaskCompletionListener{
+            tc0 =>
+              EsLang.finalizeTask(client, OfflineIndexPartition(tc0.partitionId(), dest, localEsPath, O.indices))
+          }
+
+          ts.grouped(batchSize)
             .map {
               t: Seq[T] =>
-                client.map(elClient => O.indexBatch(elClient, x, t)).attempt.runSyncUnsafe() match {
+                client.map(elClient => O.indexBatch(elClient, pc, t)).attempt.runSyncUnsafe() match {
                   case Right(v) => OfflineResult(Some(v))
                   case Left(failure) =>
                     OfflineResult(Option.empty[U], Some(failure.getMessage))
                 }
             }
-
-          EsLang.endStream[OfflineResult[U]](
-            iterator.toStream, client, OfflineIndexPartition(TaskContext.getPartitionId(), dest, localEsPath, O.indices)).iterator
       }
     }
 
@@ -77,4 +79,8 @@ object offline {
 
   }
 
+  sealed trait Unrecoverable
+  case class FailedToCreateIndex(msg:String) extends Exception(msg) with Unrecoverable
+  case class FailedToCreateIndexTemplate(msg:String) extends Exception(msg) with Unrecoverable
+  case class FailedToSnapshotIndex(msg:String) extends Exception(msg) with Unrecoverable
 }

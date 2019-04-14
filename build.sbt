@@ -30,10 +30,10 @@ libraryDependencies ++= Seq(
   "org.apache.logging.log4j" % "log4j-core" % "2.11.1",
   "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.11.1",
   "com.github.scopt" %% "scopt" % "3.5.0",
-  "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion,
-  "com.sksamuel.elastic4s" %% "elastic4s-embedded" % elastic4sVersion,
-  "com.sksamuel.elastic4s" %% "elastic4s-circe" % elastic4sVersion,
-  "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion,
+  "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion % "provided",
+  "com.sksamuel.elastic4s" %% "elastic4s-embedded" % elastic4sVersion % "provided",
+  "com.sksamuel.elastic4s" %% "elastic4s-circe" % elastic4sVersion % "provided",
+  "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion % "provided",
   "io.monix" %% "monix" % "3.0.0-RC2",
   "io.monix" %% "monix-execution" % "3.0.0-RC2",
   "org.scalactic" %% "scalactic" % "3.0.5",
@@ -58,6 +58,8 @@ assemblyShadeRules in assembly := Seq(
     "com.fasterxml.**" -> "shadefasterxml.@1",
     "com.google.**" -> "shadegoogle.@1").inAll
 )
+
+assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 
 assemblyJarName in assembly := s"${name.value}-${version.value}.jar"
 

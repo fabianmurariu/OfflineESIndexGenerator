@@ -18,8 +18,8 @@ object IndexTheWorld {
         implicit val spark: SparkSession = if (conf.local) builder.master("local[4]").getOrCreate() else builder.getOrCreate()
         import spark.implicits._
 
-        implicit val fs: FileSystem = FileSystem.get(spark.sparkContext.hadoopConfiguration)
         val repo = new URI(conf.esSnapshotPath)
+        implicit val fs: FileSystem = new Path(repo.toString).getFileSystem(spark.sparkContext.hadoopConfiguration)
         val files = FileLocator.loadWETFromIndex(conf)
 
         val existingFiles = files.flatMap { p =>
@@ -34,7 +34,7 @@ object IndexTheWorld {
         loadWETFiles(existingFiles.mkString(","))
           .filter(_.topDomain.exists(td => conf.hosts(td)))
           .coalesce(conf.partitions)
-          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo)
+          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo, conf.partitions)
           .cache()
           .count
 

@@ -25,7 +25,7 @@ object WebDocument {
 
     override def partitionContext: String => Option[LdLocale] = EsLang.langDetect
 
-    override def init(tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc)
+    override def init(shards:Int)( tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc, shards)
 
     override def indices: Seq[String] = Seq("docs")
 

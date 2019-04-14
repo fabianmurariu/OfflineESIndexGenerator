@@ -1,6 +1,7 @@
 package com.github.fabianmurariu.esoffline
 
 import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
+import com.github.fabianmurariu.esoffline.offline.{FailedToCreateIndex, FailedToCreateIndexTemplate, FailedToSnapshotIndex}
 import com.optimaize.langdetect.i18n.LdLocale
 import com.sksamuel.elastic4s.Indexes
 import com.sksamuel.elastic4s.http._
@@ -17,7 +18,8 @@ import com.optimaize.langdetect.LanguageDetectorBuilder
 import com.optimaize.langdetect.ngram.NgramExtractors
 import com.optimaize.langdetect.profiles.LanguageProfileReader
 import com.optimaize.langdetect.text.CommonTextObjectFactories
-import com.sksamuel.elastic4s.http.snapshots.CreateSnapshotResponse
+import com.sksamuel.elastic4s.http.index.{CreateIndexResponse, CreateIndexTemplateResponse}
+import com.sksamuel.elastic4s.http.snapshots.{CreateRepositoryResponse, CreateSnapshotResponse}
 import org.apache.log4j.Logger
 import org.apache.spark.TaskContext
 
@@ -38,18 +40,21 @@ object EsLang {
     "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th", "smartcn" -> "zh",
     "smartcn" -> "cn", "kuromoji" -> "ja", "nori" -> "ko").map(_.swap).toMap
 
-  def createPipeline(elasticClient: ElasticClient): Task[ElasticClient] = {
+  def createPipeline(elasticClient: ElasticClient, shards: Int): Task[ElasticClient] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
 
-    val createTemplateTask = Task.deferFuture {
+    val createTemplateTask: Task[Response[CreateIndexTemplateResponse]] = Task.deferFuture {
       elasticClient.execute(
         createIndexTemplate("default", "*").create(true).settings(
-          Map("number_of_shards" -> 3, "number_of_replicas" -> 0)
+          Map(
+            "number_of_shards" -> s"$shards",
+            "number_of_replicas" -> "0",
+            "refresh_interval" -> "-1")
         ).order(0)
       )
     }
 
-    val createIndexTask = Task.deferFuture {
+    val createIndexTask: Task[Response[CreateRepositoryResponse]] = Task.deferFuture {
       val langFields = supportedLang.map { case (lang, analyzer) =>
         textField(s"field_$lang").analyzer(analyzer).store(false)
       }.toList
@@ -72,42 +77,44 @@ object EsLang {
       }
     }
 
-    createTemplateTask.flatMap(_ => createIndexTask).map(_ => elasticClient)
+    createTemplateTask.flatMap {
+      case _: RequestSuccess[CreateIndexTemplateResponse] => createIndexTask
+      case rf: RequestFailure => throw FailedToCreateIndexTemplate(rf.toString)
+    }.map {
+      case _: RequestSuccess[CreateRepositoryResponse] => elasticClient
+      case rf => throw FailedToCreateIndex(rf.toString)
+    }
   }
 
-  def endStream[T](s: Stream[T], elasticClient: Task[ElasticClient], o: OfflineIndexPartition): Stream[T] = {
+  def finalizeTask(elasticClient: Task[ElasticClient], o: OfflineIndexPartition): Unit = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
     implicit val ss: SchedulerService = Scheduler.io()
 
-    s match {
-      case Stream.Empty =>
-        elasticClient.flatMap { ec =>
-          Task.deferFuture {
-            ec.execute {
-              flushIndex(o.indices)
-              forceMerge(o.indices)
-              createSnapshot(s"offline-snapshot", "offline-backup")
-                .indices(Indexes(o.indices))
-                .waitForCompletion(true)
-            }
-          }
-        }.flatMap {
-          out: Response[CreateSnapshotResponse] =>
-           LOG.info(s"SNAPSHOT CREATION RESULT! $out")
-          liftDataSegmentToHDFS(o)
-        }.runSyncUnsafe()
-        Stream.empty[T]
-      case head #:: next => head #:: endStream(next, elasticClient, o)
-    }
+    elasticClient.flatMap { ec =>
+      Task.deferFuture {
+        ec.execute {
+          flushIndex(o.indices)
+          forceMerge(o.indices)
+          createSnapshot(s"offline-snapshot", "offline-backup")
+            .indices(Indexes(o.indices))
+            .waitForCompletion(true)
+        }
+      }
+    }.flatMap {
+      case out: RequestSuccess[CreateSnapshotResponse] =>
+        LOG.info(s"Snapshot: $out")
+        liftDataSegmentToHDFS(o)
+      case out: RequestFailure => throw FailedToSnapshotIndex(out.toString)
+    }.runSyncUnsafe()
   }
 
   def liftDataSegmentToHDFS(o: OfflineIndexPartition, conf: Configuration = new Configuration()): Task[Unit] = o match {
     case OfflineIndexPartition(partitionId, dest, localPath, _) =>
 
-      val fs: FileSystem = FileSystem.get(conf)
+      val fs = new HPath(dest.toString).getFileSystem(conf)
       import scala.collection.JavaConversions._
       val localRepo = localPath.resolve("repo")
-      LOG.info(s"Liftin snapshot from ${localRepo.toAbsolutePath} for $partitionId dest: $partitionId ")
+      LOG.info(s"Lifting snapshot from ${localRepo.toAbsolutePath} for $partitionId dest: $partitionId ")
       fs.setWriteChecksum(false)
       //read index0
       // find the segment with data for every index
