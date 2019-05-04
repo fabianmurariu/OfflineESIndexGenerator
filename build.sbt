@@ -47,6 +47,7 @@ lazy val offlineIndexCC = (project in file("offline-index-cc")).
       case PathList("META-INF", xs@_*) => MergeStrategy.discard
       case _ => MergeStrategy.first
     },
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "com.github.scopt" %% "scopt" % "3.5.0",
       "com.optimaize.languagedetector" % "language-detector" % "0.7.1",

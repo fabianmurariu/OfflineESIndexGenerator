@@ -5,7 +5,7 @@
 # @version 0.1
 
 clean:
-	rm -Rf offline_worker_* && rm -Rf data/repo/* && rm -Rf .cluster_id
+	rm -Rf offline-index-cc/offline_worker_* && rm -Rf data/repo/* && rm -Rf .cluster_id
 
 test: clean
 	sbt test
