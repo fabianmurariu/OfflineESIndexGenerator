@@ -16,7 +16,7 @@ CLUSTER_ID=$(aws emr create-cluster \
                  --bootstrap-action Path=${BUCKET}/scripts/install_log4j2.sh \
                  --configurations file://./scripts/spark-defaults-override.json \
                  --log-uri ${BUCKET}/logs \
-                 --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"r5.2xlarge","Name":"Master instance group","BidPrice":"0.35"}]' \
+                 --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"r5.4xlarge","Name":"Master instance group","BidPrice":"0.60"}]' \
                  --visible-to-all-users | grep -o 'j-\w*')
 
 echo ${CLUSTER_ID}
