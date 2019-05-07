@@ -1,89 +1,102 @@
 package com.github.fabianmurariu.esoffline
 
-import com.github.fabianmurariu.esoffline.Hdfs.OfflineIndexPartition
-import com.github.fabianmurariu.esoffline.offline.{FailedToCreateIndex, FailedToCreateIndexTemplate, FailedToSnapshotIndex}
-import com.optimaize.langdetect.i18n.LdLocale
+import java.nio.file.{Files, Path}
+
+import com.github.fabianmurariu.esoffline.offline.FailedToSnapshotIndex
 import com.sksamuel.elastic4s.Indexes
-import com.sksamuel.elastic4s.http._
-import io.circe.generic.auto._
-import io.circe.parser._
+import com.sksamuel.elastic4s.embedded.{InternalLocalNode, LocalNode}
+import com.sksamuel.elastic4s.http.snapshots.CreateSnapshotResponse
+import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess}
 import monix.eval.Task
 import monix.execution.Scheduler
 import monix.execution.schedulers.SchedulerService
 import org.apache.commons.io.FileUtils
-import org.apache.commons.io.filefilter.DirectoryFileFilter.DIRECTORY
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path => HPath}
-import com.optimaize.langdetect.LanguageDetectorBuilder
-import com.optimaize.langdetect.ngram.NgramExtractors
-import com.optimaize.langdetect.profiles.LanguageProfileReader
-import com.optimaize.langdetect.text.CommonTextObjectFactories
-import com.sksamuel.elastic4s.http.index.{CreateIndexResponse, CreateIndexTemplateResponse}
-import com.sksamuel.elastic4s.http.snapshots.{CreateRepositoryResponse, CreateSnapshotResponse}
+import org.apache.http.HttpHost
 import org.apache.log4j.Logger
-import org.apache.spark.TaskContext
-
+import org.elasticsearch.analysis.common.CommonAnalysisPlugin
+import org.elasticsearch.client.RestClient
+import org.elasticsearch.common.settings.Settings
+import org.elasticsearch.index.reindex.ReindexPlugin
+import org.elasticsearch.percolator.PercolatorPlugin
+import org.elasticsearch.plugin.analysis.kuromoji.AnalysisKuromojiPlugin
+import org.elasticsearch.plugin.analysis.nori.AnalysisNoriPlugin
+import org.elasticsearch.plugin.analysis.smartcn.AnalysisSmartChinesePlugin
+import org.elasticsearch.script.mustache.MustachePlugin
+import org.elasticsearch.transport.Netty4Plugin
+import io.circe.generic.auto._
+import io.circe.parser._
 import scala.io.Source
+import org.apache.commons.io.filefilter.DirectoryFileFilter.DIRECTORY
 
-object EsLang {
+object EsNode {
 
   @transient lazy val LOG: Logger = Logger.getLogger(this.getClass)
 
-  val supportedLang: Map[String, String] = Seq("arabic" -> "ar", "basque" -> "eu",
-    "bengali" -> "bn", "brazilian" -> "pt", "bulgarian" -> "bg", "catalan" -> "ca",
-    "czech" -> "cs", "danish" -> "da", "dutch" -> "nl",
-    "english" -> "en", "finnish" -> "fi", "french" -> "fr",
-    "german" -> "de", "greek" -> "el", "hindi" -> "hi", "hungarian" -> "hu",
-    "indonesian" -> "id", "irish" -> "ga", "italian" -> "it", "latvian" -> "lv",
-    "lithuanian" -> "lt", "norwegian" -> "no", "persian" -> "fa", "portuguese" -> "pt",
-    "romanian" -> "ro", "russian" -> "ru", "spanish" -> "es",
-    "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th", "smartcn" -> "zh",
-    "smartcn" -> "cn", "kuromoji" -> "ja", "nori" -> "ko").map(_.swap).toMap
+  private def defaultSettings(root: Path, partitionId: Int, attemptId: Int, http: Boolean = true): Task[Settings.Builder] = Task {
+    val clusterName = s"offline-cluster-$partitionId-$attemptId"
+    System.setProperty("es.set.netty.runtime.available.processors", "false")
+    val pathData = root.resolve("data")
+    val pathHome = root.resolve("home")
+    val pathRepo = root.resolve("repo")
+    LOG.info(s"Setting up node with repo: ${pathRepo.toAbsolutePath} data: ${pathData.toAbsolutePath} home: ${pathHome.toAbsolutePath}")
 
-  def createPipeline(elasticClient: ElasticClient, shards: Int): Task[ElasticClient] = {
-    import com.sksamuel.elastic4s.http.ElasticDsl._
+    Settings.builder
+      .put("http.enabled", http)
+      .put("processors", 1)
+      .put("node.name", s"EsNode_${partitionId}_$attemptId")
+      .put("cluster.name", clusterName)
+      .put("node.master", true)
+      .put("discovery.type", "single-node")
+      .put("path.data", s"$pathData")
+      .put("indices.memory.index_buffer_size", "5%")
+      .put("indices.fielddata.cache.size", "0%")
+      .put("path.repo", s"$pathRepo")
+      .put("path.home", s"${pathHome}")
+  }
 
-    val createTemplateTask: Task[Response[CreateIndexTemplateResponse]] = Task.deferFuture {
-      elasticClient.execute(
-        createIndexTemplate("default", "*").create(true).settings(
-          Map(
-            "number_of_shards" -> s"$shards",
-            "number_of_replicas" -> "0",
-            "refresh_interval" -> "-1")
-        ).order(0)
-      )
+  private def localNodeWithHttp(settings: Settings): Task[ElasticClient] = Task {
+    require(settings.get("cluster.name") != null)
+    require(settings.get("path.home") != null)
+    require(settings.get("path.data") != null)
+    require(settings.get("path.repo") != null)
+
+    val plugins =
+      List(classOf[Netty4Plugin], classOf[MustachePlugin], classOf[PercolatorPlugin], classOf[ReindexPlugin], classOf[CommonAnalysisPlugin])
+
+    val additionalPlugins =
+      List(classOf[AnalysisKuromojiPlugin], classOf[AnalysisSmartChinesePlugin], classOf[AnalysisNoriPlugin])
+
+    val mergedSettings = Settings
+      .builder()
+      .put(settings)
+      .put("http.type", "netty4")
+      .put("http.enabled", "true")
+      .put("node.max_local_storage_nodes", "10")
+      .build()
+
+    val ln = new InternalLocalNode(mergedSettings, plugins ++ additionalPlugins)
+    ln.start()
+    ln
+  }.map { ln => ElasticClient.fromRestClient(RestClient.builder(new HttpHost(ln.ip, ln.port)).build()) }
+
+  def http(partitionId: Int, attemptId: Int, localPath: Path, additionalSettings: (String, String)*): Task[ElasticClient] = {
+    {
+      for {
+        path <- Task(localPath).map {
+          case p if Files.exists(p) =>
+            FileUtils.forceDelete(p.toFile)
+            Files.createDirectory(p)
+          case p =>
+            Files.createDirectory(p)
+        }
+        builder <- defaultSettings(path, partitionId, attemptId)
+        settings <- Task(additionalSettings.foldLeft(builder) { case (b, (k, v)) => b.put(k, v) }.build())
+        client <- localNodeWithHttp(settings)
+      } yield client
     }
 
-    val createIndexTask: Task[Response[CreateRepositoryResponse]] = Task.deferFuture {
-      val langFields = supportedLang.map { case (lang, analyzer) =>
-        textField(s"field_$lang").analyzer(analyzer).store(false)
-      }.toList
-      elasticClient.execute {
-        createIndex("docs").mappings(
-          mapping("doc").fields(List(
-            textField("text").analyzer("standard").store(false),
-            textField("lang"),
-            textField("url"),
-            textField("host"),
-            textField("mime"),
-            longField("length"),
-            dateField("date")) ++ langFields
-          )
-        )
-        createRepository("offline-backup", "fs").settings(Map(
-          "location" -> ".",
-          "compress" -> "false",
-          "max_snapshot_bytes_per_sec" -> "400mb"))
-      }
-    }
-
-    createTemplateTask.flatMap {
-      case _: RequestSuccess[CreateIndexTemplateResponse] => createIndexTask
-      case rf: RequestFailure => throw FailedToCreateIndexTemplate(rf.toString)
-    }.map {
-      case _: RequestSuccess[CreateRepositoryResponse] => elasticClient
-      case rf => throw FailedToCreateIndex(rf.toString)
-    }
   }
 
   def finalizeTask(elasticClient: Task[ElasticClient], o: OfflineIndexPartition): Unit = {
@@ -183,24 +196,5 @@ object EsLang {
 
   def renameIndicesAndSnapshot(dest: String)(implicit fs: FileSystem): Task[Unit] =
     renameSnapshotIndices(dest).flatMap(_ => renameSnapFilesInSegments(dest))
-
-  def langDetect: String => Option[LdLocale] = {
-    //load all languages://load all languages:
-
-    val languageProfiles = new LanguageProfileReader().readAllBuiltIn
-
-    //build language detector:
-    val languageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard).withProfiles(languageProfiles).build
-
-    //create a text object factory
-    val textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText
-
-    { text: String =>
-      val textObject = textObjectFactory.forText(text)
-      val maybeLang = languageDetector.detect(textObject)
-      if (maybeLang.isPresent) Some(maybeLang.get())
-      else None
-    }
-  }
 
 }

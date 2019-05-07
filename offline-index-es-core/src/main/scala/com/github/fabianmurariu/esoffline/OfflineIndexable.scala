@@ -9,7 +9,7 @@ trait OfflineIndexable[C, B, A] extends Serializable {
 
   def partitionContext: C
 
-  def init(shards:Int)(tc: ElasticClient): Task[ElasticClient]
+  def init(shards:OfflineIndexConf)(tc: ElasticClient): Task[ElasticClient]
 
   def indices: Seq[String]
 

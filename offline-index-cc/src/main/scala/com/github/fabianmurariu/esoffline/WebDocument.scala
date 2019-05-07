@@ -4,9 +4,9 @@ import java.net.URI
 
 import com.google.common.net.InternetDomainName
 import com.optimaize.langdetect.i18n.LdLocale
-import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.http.ElasticClient
 import com.sksamuel.elastic4s.http.ElasticDsl._
+import com.sksamuel.elastic4s.RefreshPolicy
 import monix.eval.Task
 
 import scala.util.Try
@@ -23,9 +23,9 @@ object WebDocument {
   implicit val offlineIndexable: OfflineIndexable[String => Option[LdLocale], Int, WebDocument] = new OfflineIndexable[String => Option[LdLocale], Int, WebDocument] {
     override def routing(t: WebDocument): String = "<CONSTANT>"
 
-    override def partitionContext: String => Option[LdLocale] = EsLang.langDetect
+    override def partitionContext: String => Option[LdLocale] = LanguageSupport.langDetect
 
-    override def init(shards:Int)( tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc, shards)
+    override def init(shards:OfflineIndexConf)( tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc, shards)
 
     override def indices: Seq[String] = Seq("docs")
 

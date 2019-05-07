@@ -28,18 +28,15 @@ object IndexTheWorld {
           else Nil
         }
 
-        println(s"${conf.hosts.mkString("[",",","]")} found on ${existingFiles.length} files")
-        existingFiles.foreach(println)
-
-        loadWETFiles(existingFiles.mkString(","))
+        FileLocator.loadWETFiles(existingFiles.mkString(","))
           .filter(_.topDomain.exists(td => conf.hosts(td)))
           .coalesce(conf.partitions)
-          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo, conf.partitions)
+          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo, conf)
           .cache()
           .count
 
         implicit val scheduler: SchedulerService = Scheduler.io()
-        EsLang.renameIndicesAndSnapshot(repo.toString).runSyncUnsafe()
+        EsNode.renameIndicesAndSnapshot(repo.toString).runSyncUnsafe()
 
       case None => throw new IllegalArgumentException(s"Unable to parse args ${args.toVector}")
     }
@@ -85,22 +82,9 @@ object IndexTheWorld {
       opt[Boolean]("store") optional() action {
         (x, c) => c.copy(store = x)
       }
-
-
-
     }
 
     parser.parse(args, OfflineIndexConf())
   }
 
 }
-
-case class OfflineIndexConf(indices: Seq[String] = Seq.empty,
-                            hosts: Set[String] = Set.empty,
-                            partitions: Int = 0,
-                            where: Option[String] = None,
-                            indexRoot: String = "s3://commoncrawl/cc-index/table/cc-main/warc/",
-                            esSnapshotPath: String = "s3://offline-elastic-world-index/repo",
-                            filesRoot: String = "s3://commoncrawl/",
-                            local: Boolean = false,
-                            store: Boolean = false)
