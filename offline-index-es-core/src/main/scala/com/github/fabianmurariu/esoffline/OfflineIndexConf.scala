@@ -10,3 +10,5 @@ case class OfflineIndexConf(indices: Seq[String] = Seq.empty,
                             local: Boolean = false,
                             store: Boolean = false,
                             `type`: String = "wet")
+
+case class OfflineConf(store:Boolean, partitions:Int)

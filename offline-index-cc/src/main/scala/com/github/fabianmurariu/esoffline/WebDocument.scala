@@ -20,12 +20,12 @@ object WebDocument {
     host.map(h => InternetDomainName.from(h).topPrivateDomain().name()).toOption
   }
 
-  implicit val offlineIndexable: OfflineIndexable[String => Option[LdLocale], Int, WebDocument] = new OfflineIndexable[String => Option[LdLocale], Int, WebDocument] {
-    override def routing(t: WebDocument): String = "<CONSTANT>"
+  implicit val offlineIndexable: OfflineIndex[String => Option[LdLocale], Int, WebDocument] = new OfflineIndex[String => Option[LdLocale], Int, WebDocument] {
+    def routing(t: WebDocument): String = "<CONSTANT>"
 
     override def partitionContext: String => Option[LdLocale] = LanguageSupport.langDetect
 
-    override def init(shards:OfflineIndexConf)( tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc, shards)
+    override def init(shards:OfflineConf)( tc: ElasticClient): Task[ElasticClient] = EsLang.createPipeline(tc, shards)
 
     override def indices: Seq[String] = Seq("docs")
 
@@ -33,7 +33,7 @@ object WebDocument {
       client.execute(
         bulk(
           wds.map {
-            case WebDocument(_, date, length, mime, url, _, _, text, topDomain) =>
+            case wt@WebDocument(_, date, length, mime, url, _, _, text, topDomain) =>
               val detectedLang = detectLang(text).flatMap(i => Option(i.getLanguage))
               val lang = detectedLang.getOrElse("UNKNOWN")
               val textFieldName = EsLang.supportedLang.get(lang).map(name => s"field_$name").getOrElse("text")
@@ -49,8 +49,8 @@ object WebDocument {
                   "length" -> length,
                   "date" -> date
                 )
-                .routing("<CONSTANT>")
-                .refresh(RefreshPolicy.IMMEDIATE)
+                .routing(routing(wt))
+                .refresh(RefreshPolicy.WaitFor)
           }
         )
       ).await

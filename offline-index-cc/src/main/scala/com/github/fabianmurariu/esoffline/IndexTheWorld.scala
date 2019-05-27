@@ -6,7 +6,7 @@ import com.optimaize.langdetect.i18n.LdLocale
 import monix.execution.Scheduler
 import monix.execution.schedulers.SchedulerService
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, SparkSession}
 
 object IndexTheWorld {
 
@@ -31,7 +31,7 @@ object IndexTheWorld {
         FileLocator.loadWETFiles(existingFiles.mkString(","))
           .filter(_.topDomain.exists(td => conf.hosts(td)))
           .coalesce(conf.partitions)
-          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo, conf)
+          .indexPartitionHttp2[Int, String => Option[LdLocale]](20, repo, OfflineConf(conf.store, conf.partitions))
           .cache()
           .count
 

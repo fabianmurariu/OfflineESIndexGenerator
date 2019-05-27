@@ -27,7 +27,7 @@ object EsLang {
     "swedish" -> "sv", "turkish" -> "tr", "thai" -> "th", "smartcn" -> "zh",
     "smartcn" -> "cn", "kuromoji" -> "ja", "nori" -> "ko").map(_.swap).toMap
 
-  def createPipeline(elasticClient: ElasticClient, conf:OfflineIndexConf): Task[ElasticClient] = {
+  def createPipeline(elasticClient: ElasticClient, conf:OfflineConf): Task[ElasticClient] = {
     import com.sksamuel.elastic4s.http.ElasticDsl._
 
     val createTemplateTask: Task[Response[CreateIndexTemplateResponse]] = Task.deferFuture {

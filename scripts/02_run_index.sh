@@ -2,7 +2,8 @@
 
 CLUSTER_ID=$(cat .cluster_id)
 
-BUCKET=s3://offline-elastic-world-index
+[[ -z "$BUCKET" ]] && { echo "BUCKET is empty exiting" ; exit 1; }
+
 JAR=offline-index-cc-0.1-SNAPSHOT.jar
 ELASTIC4S_VERSION=6.5.1
 aws s3 rm --recursive ${BUCKET}/repo

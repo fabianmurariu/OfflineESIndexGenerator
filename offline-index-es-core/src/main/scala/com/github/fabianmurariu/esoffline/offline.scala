@@ -16,9 +16,9 @@ object offline {
 
   implicit class OfflineIndexDatasetOps[T](val ds: Dataset[T]) {
 
-    def indexPartitionHttp2[U, X](batchSize: Int, dest: URI, conf:OfflineIndexConf)
-                                 (implicit O: OfflineIndexable[X, U, T], E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
-      ds.mapPartitions {
+    def indexPartitionHttp2[U, X](batchSize: Int, dest: URI, conf:OfflineConf)
+                                 (implicit O: OfflineIndex[X, U, T], E: Encoder[OfflineResult[U]]): Dataset[OfflineResult[U]] = {
+      ds.coalesce(conf.partitions).mapPartitions {
         ts: Iterator[T] =>
           val pc = O.partitionContext
           val tc = TaskContext.get()

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BUCKET=s3://offline-elastic-world-index
+[[ -z "$BUCKET" ]] && { echo "BUCKET is empty exiting" ; exit 1; }
 
 CLUSTER_NAME="OfflineIndexer"
 

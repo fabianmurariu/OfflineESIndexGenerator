@@ -11,7 +11,7 @@ class offlineTest extends FlatSpec with Matchers {
     spark.read.parquet("data/index-demo").groupBy("url_host_private_domain")
       .count()
       .orderBy('count.desc)
-      .show(10000)
+      .show(100)
   }
 
 }
