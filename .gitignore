@@ -3,3 +3,4 @@ target
 lib_managed
 data
 .cluster_id
+offline_worker_?_?
